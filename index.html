@@ -53,49 +53,6 @@
             <h1 class="text-3xl font-bold text-gray-900 mb-2">Hendingskart for Bærekraftige Liv Landås</h1>
         </div>
 
-        <!-- Form for user input -->
-        <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
-            <form id="mobilizon-form" class="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
-                
-                <!-- Accordion Container (2/3 width) -->
-                <div class="md:col-span-2">
-                    <!-- Accordion Header -->
-                    <div id="accordion-header" class="flex justify-between items-center cursor-pointer">
-                        <h2 class="text-xl font-bold text-gray-900">Endre søkefilter</h2>
-                        <svg id="accordion-arrow" class="w-6 h-6 transition-transform transform" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" >
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-                        </svg>
-                    </div>
-        
-                    <!-- Accordion Body (contains the inputs) -->
-                    <div id="accordion-body" class="hidden mt-4">
-                        <div class="mb-4 border-b pb-4">
-                            <label class="flex items-center space-x-2 cursor-pointer">
-                                <input type="checkbox" id="search-bergen" class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                                <span class="text-gray-700 font-medium">Alt i Bergen (også utanfor Bærekraftige Liv Landås)</span>
-                            </label>
-                        </div>
-                        <p class="text-gray-600 mb-4">
-                            Eller, legg til Mobilizon-instans (td., <code class="bg-gray-200 p-1 rounded">https://gjer.no</code>)
-                            og eventuelt gruppenamn (td., <code class="bg-gray-200 p-1 rounded">bll</code>) for å vise hendingar.
-                        </p>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
-                            <label for="instance-url" class="sr-only">Mobilizon-instans</label>
-                            <input type="text" id="instance-url" placeholder="Mobilizon-instans" class="w-full px-4 py-2 text-gray-700 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-200" value="https://gjer.no">
-                            
-                            <label for="group-name" class="sr-only">Gruppenamn (valgfritt)</label>
-                            <input type="text" id="group-name" placeholder="Gruppenamn (valfritt)" class="w-full px-4 py-2 text-gray-700 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-200" value="bll">
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Button (1/3 width) -->
-                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg transition duration-200 shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 self-center">
-                    Last hendingar
-                </button>
-            </form>
-        </div>
-
         <!-- Map and Loading/Error states -->
         <div class="bg-white rounded-xl shadow-lg p-2 relative">
              <div id="map" class="rounded-lg z-0"></div>
@@ -105,10 +62,18 @@
                 <p id="message-area" class="text-gray-700 font-semibold text-lg"></p>
             </div>
         </div>
+        
+        <!-- View Toggle Button -->
+        <div class="mt-4">
+             <button id="toggle-view-btn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg transition duration-200 shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+                Det store garasjesalget 2025
+            </button>
+        </div>
+
 
         <!-- Event List Section -->
         <div class="bg-white rounded-xl shadow-lg p-6 mt-6">
-            <h2 class="text-2xl font-bold text-gray-900 mb-4">Hendingar</h2>
+            <h2 id="list-title" class="text-2xl font-bold text-gray-900 mb-4">Hendingar</h2>
             <div id="event-list" class="space-y-4 max-h-96 overflow-y-auto">
                 <!-- Event items will be inserted here by JavaScript -->
                 <p class="text-gray-500">Lastar hendingar...</p>
@@ -119,17 +84,12 @@
 
     <script>
         // DOM element references
-        const form = document.getElementById('mobilizon-form');
-        const urlInput = document.getElementById('instance-url');
-        const groupInput = document.getElementById('group-name');
-        const bergenCheckbox = document.getElementById('search-bergen');
         const mapOverlay = document.getElementById('map-overlay');
         const loader = document.getElementById('loader');
         const messageArea = document.getElementById('message-area');
         const eventListContainer = document.getElementById('event-list');
-        const accordionHeader = document.getElementById('accordion-header');
-        const accordionBody = document.getElementById('accordion-body');
-        const accordionArrow = document.getElementById('accordion-arrow');
+        const listTitle = document.getElementById('list-title');
+        const toggleBtn = document.getElementById('toggle-view-btn');
 
         // --- Start of Self-contained Geohash implementation ---
         const BASE32 = '0123456789bcdefghjkmnpqrstuvwxyz';
@@ -180,29 +140,14 @@
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(map);
 
-        // Layer group to manage clustered markers
-        let markers = L.markerClusterGroup();
-        map.addLayer(markers);
-
-        // GraphQL query to fetch all public events (can include location filters)
-        const allEventsQuery = `
-            query SearchEvents($beginsOn: DateTime, $location: String, $radius: Float) {
-                searchEvents(beginsOn: $beginsOn, location: $location, radius: $radius) {
-                    elements {
-                        title
-                        url
-                        beginsOn
-                        physicalAddress {
-                            description
-                            locality
-                            region
-                            country
-                            geom
-                        }
-                    }
-                }
-            }
-        `;
+        // Layer groups for markers
+        let mobilizonMarkers = L.markerClusterGroup(); // Mobilizon events will be clustered
+        let uMapMarkers = L.featureGroup(); // uMap points will NOT be clustered, changed to featureGroup to get bounds
+        
+        // State management
+        let isShowingMobilizon = true;
+        let mobilizonEventData = [];
+        const uMapData = []; // Will hold processed uMap data for the list
 
         // GraphQL query to fetch events for a specific group
         const groupEventsQuery = `
@@ -226,6 +171,9 @@
                 }
             }
         `;
+        
+        // Data for the uMap layer is now embedded directly
+        const uMapGeojsonData = {"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3615891,60.3563282,0]},"properties":{"name":"Adolph Bergs vei 52A","description":"Klær sko leker, barneting, lego, kjøkkenting, mulig elektriske produkter, sminke, pynteting"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.366554,60.3665879,0]},"properties":{"name":"Bekkesvingen 3A","description":"Div bøker, speil, innredning, teppe, hundeutstyr, klær, sko, friluftsutstyr, dekorasjon, kjøkkenredskap."}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3676147,60.3672007,0]},"properties":{"name":"Bekkesvingen 4","description":"Klær og sko (dame og ungdom), utstyr, ting"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3678458,60.366298,0]},"properties":{"name":"Bekkesvingen 10","description":"Skal selge møbler (sofa og stoler) + diverse"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3668122,60.3677796,0]},"properties":{"name":"Bekkeveien 10","description":{"@type":"html","value":"Velkommen til oss i Bekkeveien 10. Her er det 2 ulike utsalg!<br><br>Utsalg 1: Vintageklær herre/dame (har en god del!)<br><br>Utsalg 2: Her kan du leske deg på saft og mumse kjeks og noe hjemmebakt mens du kikker på små adventskalendergaver, bøker, vesker, vintage kjoler, ullklær str 10 år- dame L, blomsterpotter, kjøkkenutstyr, damekåper, pensko str 37-39. Hjemmestrikkede votter, sokker, små dyr og store strikkede katter og annet strikk og søm. Fra en lærerkarriere: klassesett vannpistoler, heia-dusker, brettspill, ungdomsbøker, tegnesaker, tegneserier, klasserompynt pride/halloween/jul/id/etc. Akebrett, solstoler og barnevogn. Og et badekar. Og enda mye mer.<br><br>Her er det mange skatter å oppdage. Vi sees!"}}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3651172,60.3604928,0]},"properties":{"name":"Birkeveien 45-47","description":"Flere beboere i laget ønsker å selge klær og overskudd fra boder og loft."}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3657521,60.3605828,0]},"properties":{"name":"Birkeveien 56A","description":"bøker, klede og leiker"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3692542,60.3616438,0]},"properties":{"name":"Erleveien 20-24","description":{"@type":"html","value":"Vi en liten gjeng som står på Nancyplass ved Erleveien 20-24 på lørdag.<br><br>Vi selger for det meste dameklær, men også noe møbler, hundeutstyr og annet småting. "}}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.368855,60.3603318,0]},"properties":{"name":"Erleveien 30 (ved bilreparatøren)","description":"Skal selge mest klær, men er også litt interiør og andre småting!"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3582765,60.3623156,0]},"properties":{"name":"Ernst Sars' vei 2","description":"Kjøkkenutstyr, servise, bøker, interiør + klær."}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3592524,60.3604733,0]},"properties":{"name":"Fageråsen 1A","description":{"@type":"html","value":"Litt småbakst, kaffi, saft.<br>Barnetøy, leiker, bøker, mindre interiørting/utstyr."}}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.355997,60.3582203,0]},"properties":{"name":"Fageråsen 36A","description":{"@type":"html","value":"Klær, utstyr, møbler.<br>Har flyttet så har en del til overs."}}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3648191,60.3640837,0]},"properties":{"name":"Fiolveien 6","description":"Barneutstyr, klær, leker, kjøkkenutstyr etc"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3642665,60.3639522,0]},"properties":{"name":"Fiolveien 7B","description":"Klær voksen og barn, leker, interiør, mat/drikke/snacks "}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3567306,60.3613386,0]},"properties":{"name":"Gjøas vei 55","description":{"@type":"html","value":"Grått hus med rød dør!<br><br>Mummikopper, retrodesignkjoler, bøker, leker, andre kopper mm. Og kake😊"}}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3580771,60.3616118,0]},"properties":{"name":"Gjøas/Pavels vei (bakgården)","description":{"@type":"html","value":"Bakgården til Pavels/Gjøas vei. Inngang mellom Pavels/Gjøas vei.<br><br>Bakst, saft, kaffe.<br>Interiør, nips, barneleker."}}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3622174,60.3595863,0]},"properties":{"name":"GUL = Søndag 31. august, Det store garasjesalget på Slettebakken\n"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3591699,60.3594605,0]},"properties":{"name":"Hagerups vei 41C","description":"Utstyr baby, klær dame og små barn, diverse interiør."}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3583498,60.3590935,0]},"properties":{"name":"Hagerups vei 45B","description":"Kake og saft, klede, småmøbler, bøker, kjøkenting og andre ting, barnesykkel, barnevogn, stoffrestar, avleggarar, osv."}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3589744,60.3506502,0]},"properties":{"name":"Johan Hjorts vei 28","description":{"@type":"html","value":"Servisedeler, interiør, nips, leker, bøker.<br><br>Står på terrassen, eller utenfor blokk på lekeplass."}}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3570293,60.3506578,0]},"properties":{"name":"Johan Hjorts vei 45","description":"Klær til barn og voksne. Litt leker og småmøbler. Kaffe og saft og muffins."}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3564874,60.3507132,0]},"properties":{"name":"Johan Hjorts vei 47","description":{"@type":"html","value":"Vi er flere selgere samlet på parkeringsplassen!<br><br>Her får du bl.a. tak i barneklær, voksenklær, leker, julepynt, avlegger av planter, her blir mye forskjellig ryddet ut av skapet og skuffer.<br><br>Er du sulten kan du kjøpe litt saft og lapper."}}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3741777,60.3642302,0]},"properties":{"name":"Kanonhaugen 40","description":{"@type":"html","value":"- Våre ungar og naboungar ynskjer å selge barneleiker og div. utstyr til barn.<br><br>- Kanskje også brownies & kaffe.<br><br>- Hvis været er fint, kan jeg også selge litt kunst til en rimelig prisklasse (150–450 kr)."}}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3709342,60.3541045,0]},"properties":{"name":"Kolstien 36 (fotballbanen)","description":{"@type":"html","value":"Fotballbanen over veien for Kolstien 36.<br><br>Kake og boller. Leker, sparkesykkel, pizzaovn og klær. "}}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3718326,60.3535331,0]},"properties":{"name":"Kolstien 43D","description":"Klær, bøker, pynteting, kjøkkenutstyr, mm"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3718686,60.3542839,0]},"properties":{"name":"Kolstien 45A (grusbanen)","description":{"@type":"html","value":"Grusbanen nedenfor Kolstien 45a.<br><br>Barnebøker, leker, spill, lego, kaffe, saft, muffins ."}}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3637197,60.3587682,0]},"properties":{"name":"Kristofer Jansons vei 19","description":"Flere beboere i laget ønsker å selge klær og overskudd fra boder og loft."}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3732765,60.3601207,0]},"properties":{"name":"Landåslien 37"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3731937,60.3606701,0]},"properties":{"name":"Landåslien 42B","description":"Små møbler, nips, utstyr til barn, klær til barn og voksne "}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3752648,60.3620294,0]},"properties":{"name":"Landåslien 55A","description":"Møbler, Leker, klær (barn 0-2år og til voksen)"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3668288,60.3649648,0]},"properties":{"name":"Landåssvingen 1","description":"Barneklær og dameklær (kjoler)"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3684573,60.3654323,0]},"properties":{"name":"Landåssvingen 10A","description":{"@type":"html","value":"Flere selgere på denne adressen!<br><br>*Vi selger leker, klær for store og små, barnevogn. Glutenfrie vafler! <br><br>*Smykker, sølv, vaser, artige og fine ting."}}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3682281,60.3654037,0]},"properties":{"name":"Landåssvingen 10B","description":"Leker, bøker, puslespill, barneklær. Det vil også bli salg av saft/kaffe og boller. "}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3680976,60.3654123,0]},"properties":{"name":"Landåssvingen 10C","description":{"@type":"html","value":"Diverse barneutstyr, litt retro møbler, ting og tang.<br><br>Vi stenger gata vår for gjennomkjøyring denne dagen, trekker kaffe og sett fram litt stoler og håper på besøk av fjern og nær. "}}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3707208,60.3662344,0]},"properties":{"name":"Landåssvingen 15: Tingoteket v/ Bergen inkluderingssenter","description":{"@type":"html","value":"Vi selger noen ting fra Tingoteket, i garasjebygningen på inkluderingssenteret.<br><br>Bl.a. bilstol, reisetrille, akebrett, gymball, puslespill, bøker, småting, interiør, leker."}}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3717145,60.3672059,0]},"properties":{"name":"Landåssvingen 22","description":"Dameklær, Lego, sykkel, barneklær"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3740554,60.3667507,0]},"properties":{"name":"Landåssvingen 32B","description":"Klær, bøker, nips"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3633976,60.3656604,0]},"properties":{"name":"Langhaugen 16","description":"Dameklær, interiør"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3708507,60.3669657,0]},"properties":{"name":"Lægdene 3B"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3726587,60.3676038,0]},"properties":{"name":"Lægdesvingen 3 (ved miljøstasjonen)","description":{"@type":"html","value":"Babyutstyr, vogner, poser, bæresele osv, barnesykkel<br>Møbler, bord og småmøbler <br>Taklamper og andre lamper ulike stiler <br>Servise, glass, potter, vaser osv <br>Lysestaker osv<br>Bilder/plakater, speil, div interiør <br>Verktøy div <br>klær voksne og barn<br>Puter og pledd <br>Redningsvester <br>Liten fryser <br>Sengetøy barn "}}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3717368,60.3685371,0]},"properties":{"name":"Lægdesvingen 16","description":{"@type":"html","value":"Vi står utenfor garasjene v/ nr 18.<br>Vi satser på at det blir både limonade og kaffe, og kanskje litt kake.<br><br>Vi tømmer boden, og selger diverse byggematerialer, Souk-fliser, småmøbler, barneutstyr (inkl. bilsete), leker osv.<br><br>Koselig om du vil sitte ned og ta en kaffe. Velkommen innom!"}}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3720769,60.3681987,0]},"properties":{"name":"Lægdesvingen 19","description":{"@type":"html","value":"Selger og gir vekk <br><br>Vintage klær til voksne.<br><br>Klær voksne og barn<br><br>Leker<br><br>Noe kjøkken ting krus, glass og sånn gryte med telys varmer<br><br>Noen bilder rammer. bilder. Te lys holdere <br><br>Sko til voksne og barn. Klatre sko <br><br>En sykkel <br><br>Dyne og pute trekk Disney figurer"}}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3723562,60.3686575,0]},"properties":{"name":"Lægdesvingen 22","description":"Vafler, saft, klær, bøker, leker, ting og tang"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3736281,60.3681907,0]},"properties":{"name":"Lægdesvingen 23B","description":"Boller, drikke, leiker, bøker"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3668255,60.3710437,0]},"properties":{"name":"Lægdesvingen 58","description":"Sportsutstyr til barn og voksne, leker, yttertøy klær og sko til barn"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3695574,60.3706043,0]},"properties":{"name":"Lægdesvingen 76 (garasjerekke)","description":{"@type":"html","value":"I garasjerekken mellom Lægdesvingen 76 og 75.<br><br>Leker, bøker og utstyr til barn. Barneklær. Ting og tang😊 Vi kommer også til å selge ferske sveler, saft og kaffi."}}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.372728,60.3702049,0]},"properties":{"name":"Lægdesvingen 92B","description":{"@type":"html","value":"Vi selger: <br>Vinterutstyr: ski, snowboard. <br>Rulleskøyter. Hockeyutstyr. <br>Litt verktøy. Klær. <br>Bålpanne. "}}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3667042,60.3538196,0]},"properties":{"name":"Mannsverk 4","description":{"@type":"html","value":"Flere selgere :)<br><br>Kopper, tallerkener, glass, rosemalte ting, nips og klær.<br><br>Lampeskjermer<br>Bordlampe<br>Klær<br>Sko<br>DVD<br>Bøker<br>Div hobby ting<br>Ulike etg fat<br>Glassvaser/skåler/telysestake<br>Bilde/posters<br>Leiker/figurer<br>Pynteputetrekk<br>Julepynt<br>Vesker<br>Rammer<br>Krystall glass<br>\"Kjøkken ting\""}}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3654541,60.3536385,0]},"properties":{"name":"Mannsverk 34","description":{"@type":"html","value":"Kvinneklær & utstyr til baby"}}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3723157,60.3628275,0]},"properties":{"name":"Meiseveien 5","description":{"@type":"html","value":"Sykler <br>Møbler<br>Kjøkkenutstyr<br>Babyting<br>Barneleker <br>Bøker"}}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3637032,60.3680975,0]},"properties":{"name":"Nattlandsveien 7","description":"Klær til dame og mann (ung voksen) – flere merke- og vintageplagg, bøker, sko, interiør/nips og diverse. Alt selges til veldig lave priser – kom og gjør et kupp!"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3681359,60.361438,0]},"properties":{"name":"Nattlandsveien 76A: Landås bibliotek","description":"Et utvalg utgåtte bøker fra biblioteket, i hovedsak skjønnlitteratur for voksne. "}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3681628,60.3530465,0]},"properties":{"name":"Nattlandsveien 103","description":"Barna selger leker, klær og pynteting."}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3651214,60.3577491,0]},"properties":{"name":"Nordahl Rolfsens vei 1, 3 og 5","description":{"@type":"html","value":"Kaféutsalg med kaker, småbakst, cookies, knekkebrød og ciabatta. Kaffe og te. <br><br>Håndverk, blant annet smykker, meksikansk håndarbeid, bøker og diverse interiør.<br><br>Vi står ute på plassen hvis været er fint, men hvis det regner mye flytter vi inn i kjelleren (inngang gjennom vaskekjeller, følg skilt)."}}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3665678,60.3559993,0]},"properties":{"name":"Nordahl Rolfsens vei 28B","description":{"@type":"html","value":"Vi kommer til å ha utsalg i vinterhagen og plattingen vår. Vi har blant annet: <br><br>Et dukkehus i tre<br>En kurvflettet vinkel-sofa med hvite puter(3+2 seter)<br>Salong-bord i tre<br>Barneklær alt fra baby str opp til 6 år. <br>Barnespill og bøker<br>Bilstol<br>Krakker<br>Diverse barneleker"}}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3757469,60.3493372,0]},"properties":{"name":"Nordre Nattlandsfjellet 106","description":"Mat, drikke, ting, utstyr, møbler. "}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.364924,60.3570703,0]},"properties":{"name":"Nordrehaug 9E","description":"Mest barneleker og diverse til barn. Litt klær. "}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3649665,60.3570018,0]},"properties":{"name":"Nordrehaug 9F","description":{"@type":"html","value":"Sport-, fiske-, fritid- og turutstyr, gamle leker og figurer, spill, samleobjekter, foto- og videoutstyr. VHS-filmer, CD, DVD og dataspill. Bøker og eldre tegneserier. Verktøy og annet diverse. Det vil være salg av mat og drikke.<br><br><br>Ankomst til gaten fra Wiers-Jenssens vei 7B eller Nordahl Rolfsens vei 21A. Nordrehaug er en en blindvei og den vil ikke være egnet for tilkomst med bil under garasjesalget."}}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3547871,60.3667506,0]},"properties":{"name":"Roald Amundsens vei 27","description":"Møbler, kjøkkenutstyr, lamper, leker, diverse ting, kaffe, saft og vafler"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.371491,60.3631356,0]},"properties":{"name":"Rugdeveien 4 (grendehus)","description":{"@type":"html","value":"Grendehuset, Rugdeveien 4 , rett overfor Eldresenteret. Se etter ballonger!<br><br>Det blir salg av glutenfrie vafler til alle og saft og mulighet for en stol å slenge seg ned på! Vi selger utvalgte klær for barn og voksne både til hverdag og fest, barnesko/ støvler, babytøy og utstyr, leker, barnebøker, hobbyartikler, hobbybøker, fagbøker innen sykepleie o.l , kaffeservise, kjøkkenting, turutstyr, skolesekk, pennal, drikkeflasker, bokser og nips. Velkommen innom!"}}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.372003,60.3621953,0]},"properties":{"name":"Rugdeveien 16","description":{"@type":"html","value":"LØRDAG 12:00-15:00<br>Her møter du flere selgere på samme adresse:<br><br>*Klær og utstyr til voksen og barn.<br>*Interiør, , kunst, utstyr, klær og mat.<br> *Kjøkkenutstyr, pyntegjenstander, dameklær, sko, bøker."}}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3721309,60.3614587,0]},"properties":{"name":"Rugdeveien 26","description":"Diverse ting som servise, utstyr, ting og tang, noe klær kanskje."}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3715267,60.3616746,0]},"properties":{"name":"Rugdeveien 27 (bakhagen)","description":{"@type":"html","value":"Klær, sko, leker, kake<br><br>Vi er tre naboer som selger i bakhagen utenfor blokken vår"}}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3704537,60.3606894,0]},"properties":{"name":"Rugdeveien 34","description":"Kunst, rammer, kle (vintage og kvalitet), gamle ting og eksotika/kuriosa "}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3706365,60.3631025,0]},"properties":{"name":"RØD = Lørdag 30. august, Det store garasjesalget på Landås"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3616226,60.3658999,0]},"properties":{"name":"Slettebakksveien 30","description":"Leker, bøker, barnebøker, , kostymer, barneklær, to stk stuebord. "}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3605515,60.363868,0]},"properties":{"name":"Slettebakksveien 48-50","description":"Leke, ting, retro, møbler, retro klær, sko"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3594706,60.3612766,0]},"properties":{"name":"Slettebakksveien 77","description":"Møbler, div klær, vesker/kurver, bøker, tallerkener osv. Godt og blandet! "}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3705243,60.3519123,0]},"properties":{"name":"Sofus Madsens vei 19","description":{"@type":"html","value":"Ved dårlig vær, står vi i garasjeanlegget!<br><br>Mest leker og småbarnsutstyr"}}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3702305,60.3520527,0]},"properties":{"name":"Sofus Madsens vei 23 (garasjene )\n","description":"Ski, puslespill, bøker, sekker, høyttalere, diverse klær, gammelt hjørneskap, mm"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3644762,60.3667758,0]},"properties":{"name":"Soleiveien 2","description":"Interiør, møbler, leker og klær til barn, kaffe, vafler"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3700222,60.3682625,0]},"properties":{"name":"Sollien 9"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3680841,60.3691895,0]},"properties":{"name":"Sollien 20","description":{"@type":"html","value":"Voksenklær<br>Sko<br>Bøker<br>Barneklær( ulltøy, allværsjakker, pentøy)<br>Fotballutstyr(sko og fotballsokker)<br>Div. leker<br>Nips"}}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3651677,60.3709617,0]},"properties":{"name":"Sollien 38c","description":"Vi selger en del klær til barn og ungdom, mye sko, noe vinterutstyr; skøyter og skisko/randonee mm. Ymse interiør og nips, hageputer og rester etter oppussing/husbygging ++++ Har også masse fine leker og barnebøker, og noen digge kanelboller folk kan styrke seg på på veien!"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3669223,60.3708179,0]},"properties":{"name":"Sollien 44","description":{"@type":"html","value":"Vi står tre selgere på denne adressen:)<br><br>Klær, kvinne S og M<br><br>Turutstyr (Rumpetaske, turjakker, hodelykt, tursekk 26 L, GoreTex-sko str. 38)<br><br>Kjøkkenutstyr og interiør (Duker, servietter, løpere, oppbevaringskurver, baderomsmatte, kleshengere til bukser/skjørt, V60-kaffesett, kaffekvern, lykt til kubbelys)<br><br>Vintage servise (Arabia, Villeroy & Boch, Doverstone Staffordshire, Figgjo, Arcoroc)<br><br>Bøker<br><br>Hobbyutstyr til barn og voksen (perler, malerskrin, fargeblyanter, pensler, stoff)<br><br>Annet:<br>Kamera, speilrefleks <br>Spill, bezzerwizzer og sjakk<br>Ukulele + stemmer"}}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3707571,60.3696639,0]},"properties":{"name":"Sollien 57","description":"Utstyr, leker, div ting og tang."}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3714334,60.3695244,0]},"properties":{"name":"Sollien 63","description":{"@type":"html","value":"Leker og klær.<br>Vi kommer også lage cafe med saft, kaffe og kaker (hvis det ikke regner)."}}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3726457,60.3696644,0]},"properties":{"name":"Sollien 66B","description":"Kaffe og kake. Selge div kjøkkenting, pynteting, klær, sko, skøyter, skisko. Verktøy."}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3749564,60.3663878,0]},"properties":{"name":"Sollien 109","description":{"@type":"html","value":"Klær<br>Vi tenker å sette opp et stativ, så kan folk bare vippse. Er ikke sikkert vi kommer til å stå der hele tiden☺️ "}}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3757783,60.3662592,0]},"properties":{"name":"Sollien 126","description":"Fint brukte leiker av god kvalitet; feks Brio, Duplo, Playmobile. Ein fint brukt, god sykkel med lett vekt, til barn 4-6 år. Bøker, puslespel. 10-kroners marked og mange småleiker gratis."}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3756279,60.3654919,0]},"properties":{"name":"Sollien 129","description":"Barneklær, leker, barneutstyr, sko, ting til hjemmet"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3756849,60.3651341,0]},"properties":{"name":"Sollien 137A","description":"Serveringsfat, pyntegjenstander, retro dessertskåler, blomstervaser i krystall, barnebøker og kokebøker, noe klær, vafler og saft."}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3757545,60.3632918,0]},"properties":{"name":"Sollien 155B","description":"Alpin ski utstyr til barn, el-sykkel, møbler, leker og spill, ølbrygging utstyr, micro sparkesykkel, sportsutstyr og bilutstyr osv."}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.371802,60.358419,0]},"properties":{"name":"Strimmelen 4 (garasje m/vimpler)","description":{"@type":"html","value":"Garasje ved høgblokka i Strimmelen 4 - se etter vimplene! (Garasjen ligger på høgre side av høgblokka når ein kjem inn i vegkrysset ved frisørsalongen.)<br><br>Selger mat/drikke. Mest sannsynlig nystekte vafler, kaffe, saft og noko bakst. <br>Sko, klær, kjøkkenutstyr, pynteting og liknande. "}}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3712472,60.3578364,0]},"properties":{"name":"Strimmelen 8","description":"Lego, Brettspill, Planter, Interiør, Pokemon og Klær!"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3624677,60.3473787,0]},"properties":{"name":"Vilhelm Bjerknes vei 52","description":{"@type":"html","value":"Flere selgere!<br><br>*Interiør, småmøbler, leker (dukker, dukkevogn, puslespill, spill), Samsonite-koffert til barn, barnebøker, barneklær fra Polarn O. Pyret.<br><br>*Interiør,møbler,klær! Veldig mye ubrukt eller kun brukt i styling!<br><br>Selger saft og kake."}}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.359549,60.3562426,0]},"properties":{"name":"Vilhelm Bjerknes' vei 4 (Sletten Senter)","description":"Landåspikenes Bruktmarked har åpent lørdag kl 11-16 i 2. etasje på Sletten senter!"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.362965,60.3697783,0]},"properties":{"name":"Vognstølen 16","description":"Vafler, dameklær, barneklær og leker"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3529812,60.3488657,0]},"properties":{"name":"Øvre Fantoftåsen 39","description":"Møbler, mye pyntegjenstander/nips, glass og servise, litt klær/sko til barn/dame og diverse annet småplukk/småting som ikke er klær. "}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3766322,60.3659549,0]},"properties":{"name":"Øvre Sollien 6","description":"Selger litt forskjellig dame- og herreklær. Kanskje noe barneklær og leker."}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3756316,60.3670249,0]},"properties":{"name":"Øvre Sollien 40"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.37555,60.3671055,0]},"properties":{"name":"Øvre Sollien 44","description":"interiør og barneleker "}},{"type":"Feature","geometry":{"type":"Point","coordinates":[5.3752199,60.3688477,0]},"properties":{"name":"Øvre Sollien 92","description":{"@type":"html","value":"Jenteklær: mest i str 8-10 år, men og noe i 6-8 år og 10-12 år.<br>- T-skjorte, bukser, gensre, jakker, vinterklær etc<br><br>Sko til jente: str 31 - 35<br>- pensko, sandaler, sjøstøvler etc i str <br> <br>Sko til gutt/mann:str 40 og 43<br>- Hallsko, tøysko, fritidssko<br><br>Gutteklær: str 12-13 år<br><br>Noe leker"}}}]};
 
         // Function to show a message on the map overlay
         const showMessage = (message, showLoader = false) => {
@@ -239,236 +187,234 @@
             mapOverlay.style.display = 'none';
         };
 
+        const populateMobilizonList = (events) => {
+            eventListContainer.innerHTML = '';
+            if (events.length === 0) {
+                eventListContainer.innerHTML = '<p class="text-gray-500">Ingen hendingar å vise.</p>';
+                return;
+            }
+
+            const dateTimeFormatter = new Intl.DateTimeFormat('nb-NO', {
+                weekday: 'long', day: 'numeric', month: 'long', hour: 'numeric', minute: 'numeric', timeZone: 'Europe/Oslo'
+            });
+
+            events.forEach(({ event, latitude, longitude }) => {
+                const { description, locality } = event.physicalAddress || {};
+                const locationText = locality || description || 'Stad ikkje spesifisert';
+                let formattedDate = event.beginsOn ? dateTimeFormatter.format(new Date(event.beginsOn)) : '';
+
+                const listItem = document.createElement('div');
+                listItem.className = 'p-4 border-b last:border-b-0 hover:bg-gray-50 transition cursor-pointer';
+                listItem.innerHTML = `
+                    <h3 class="font-bold text-lg">
+                        <a href="${event.url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800">${event.title}</a>
+                    </h3>
+                    <p class="text-gray-700">${locationText} - <span class="font-medium">${formattedDate}</span></p>
+                `;
+                listItem.addEventListener('click', () => {
+                    map.setView([latitude, longitude], 15);
+                    const markerToFind = mobilizonMarkers.getLayers().find(m => m.getLatLng().equals(L.latLng(latitude, longitude)));
+                    if (markerToFind) {
+                        mobilizonMarkers.zoomToShowLayer(markerToFind, () => markerToFind.openPopup());
+                    }
+                });
+                eventListContainer.appendChild(listItem);
+            });
+        };
+
+        const populateUMapList = () => {
+            eventListContainer.innerHTML = '';
+             if (uMapData.length === 0) {
+                eventListContainer.innerHTML = '<p class="text-gray-500">Ingen garasjesal-adresser å vise.</p>';
+                return;
+            }
+
+            uMapData.forEach(item => {
+                const listItem = document.createElement('div');
+                listItem.className = 'p-4 border-b last:border-b-0 hover:bg-gray-50 transition cursor-pointer';
+                listItem.innerHTML = `
+                    <h3 class="font-bold text-lg">${item.name}</h3>
+                    <p class="text-gray-700">${item.description}</p>
+                `;
+                 listItem.addEventListener('click', () => {
+                    map.setView(item.latlng, 16);
+                    const markerToFind = uMapMarkers.getLayers().find(m => m.getLatLng().equals(item.latlng));
+                    if (markerToFind) {
+                         markerToFind.openPopup();
+                    }
+                });
+                eventListContainer.appendChild(listItem);
+            });
+        };
+        
+        // Function to display uMap Layer from embedded data
+        const processAndDisplayUMapLayer = () => {
+            try {
+                const geoJsonLayer = L.geoJSON(uMapGeojsonData, {
+                    onEachFeature: (feature, layer) => {
+                        let popupContent = '';
+                        let descriptionText = '';
+                        if (feature.properties) {
+                            if (feature.properties.name) {
+                                popupContent += `<strong class="text-lg">${feature.properties.name}</strong>`;
+                            }
+                            const desc = feature.properties.description;
+                            if (desc) {
+                                if (typeof desc === 'object' && desc !== null && desc.value) {
+                                    popupContent += `<br>${desc.value}`;
+                                    descriptionText = desc.value;
+                                } else if (typeof desc === 'string') {
+                                    popupContent += `<br>${desc}`;
+                                    descriptionText = desc;
+                                }
+                            }
+                        }
+                        if (popupContent) {
+                            layer.bindPopup(popupContent);
+                        }
+
+                        // Store processed data for the list
+                        uMapData.push({
+                            name: feature.properties.name || 'Ukjent stad',
+                            description: descriptionText,
+                            latlng: layer.getLatLng()
+                        });
+                    }
+                });
+                uMapMarkers.addLayer(geoJsonLayer);
+            } catch (error) {
+                console.error('Feil ved lasting av innebygd uMap-lag:', error);
+            }
+        };
+
         // Function to fetch and display events
-        const fetchAndDisplayEvents = async (instanceUrl, groupName, isBergenSearch) => {
-            markers.clearLayers(); // Clear previous markers from the cluster group
-            eventListContainer.innerHTML = ''; // Clear previous list
+        const fetchAndDisplayEvents = async () => {
+            mobilizonMarkers.clearLayers();
+            mobilizonEventData = [];
             showMessage('Lastar hendingar...', true);
 
             try {
-                // Determine which query and variables to use
-                const isGroupSearch = !isBergenSearch && groupName && groupName.trim() !== '';
-                let query;
-                const variables = {};
-
-                if (isGroupSearch) {
-                    query = groupEventsQuery;
-                    variables.groupName = groupName.trim();
-                } else {
-                    // Both Bergen search and instance-wide search use searchEvents
-                    query = allEventsQuery;
-                    variables.beginsOn = new Date().toISOString();
-                    if (isBergenSearch) {
-                        const bergenLat = 60.39;
-                        const bergenLon = 5.32;
-                        // Use the self-contained geohash function
-                        variables.location = encodeGeohash(bergenLat, bergenLon, 6); // Precision 6 is ~0.6km
-                        variables.radius = 25; // 25 km
-                    }
-                }
-                
-                // Ensure URL has a protocol
-                let url = instanceUrl.trim();
-                if (!url.startsWith('http')) {
-                   url = 'https://' + url;
-                }
-                const apiUrl = new URL('/api', url).href;
+                const query = groupEventsQuery;
+                const variables = { groupName: "bll" };
+                const apiUrl = 'https://gjer.no/api';
                 
                 const response = await fetch(apiUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-                    body: JSON.stringify({ 
-                        query: query,
-                        variables: variables
-                    })
+                    body: JSON.stringify({ query, variables })
                 });
 
-                if (!response.ok) {
-                    throw new Error(`Nettverksrespons var ikkje ok: ${response.statusText}`);
-                }
-
+                if (!response.ok) throw new Error(`Nettverksrespons var ikkje ok: ${response.statusText}`);
                 const result = await response.json();
-
-                if (result.errors) {
-                    console.error('GraphQL Errors:', result.errors);
-                    throw new Error(result.errors.map(e => e.message).join('\n'));
-                }
+                if (result.errors) throw new Error(result.errors.map(e => e.message).join('\n'));
                 
-                let rawEvents = [];
-                if (isGroupSearch) {
-                    if (result.data.group && result.data.group.organizedEvents) {
-                        rawEvents = result.data.group.organizedEvents.elements;
-                    } else {
-                         showMessage(`Fann ikkje gruppa "${groupName}" eller ho har ingen hendingar.`);
-                         eventListContainer.innerHTML = `<p class="text-gray-500">Fann ikkje gruppa "${groupName}" eller ho har ingen hendingar.</p>`;
-                         return;
-                    }
-                } else {
-                    rawEvents = result.data.searchEvents.elements;
-                }
-
-                // For group searches, we filter upcoming events on the client side
+                let rawEvents = result.data.group?.organizedEvents?.elements || [];
                 const now = new Date();
-                const events = isGroupSearch
-                    ? rawEvents.filter(event => event.endsOn && new Date(event.endsOn) >= now)
-                    : rawEvents;
+                const events = rawEvents.filter(event => event.endsOn && new Date(event.endsOn) >= now);
 
-
-                if (!events || events.length === 0) {
+                if (events.length === 0) {
                     showMessage('Fann ingen komande offentlege hendingar for dette søket.');
-                    eventListContainer.innerHTML = '<p class="text-gray-500">Ingen hendingar å vise.</p>';
+                    populateMobilizonList([]);
                     return;
                 }
 
-                const eventsToGeocode = [];
-                const eventsWithCoords = [];
-
-                events.forEach(event => {
-                    if (event.physicalAddress?.geom && typeof event.physicalAddress.geom === 'string' && event.physicalAddress.geom.includes(';')) {
+                // Process events for geocoding
+                const geocodePromises = events.map(async (event) => {
+                    if (event.physicalAddress?.geom?.includes(';')) {
                         const [longitude, latitude] = event.physicalAddress.geom.split(';').map(Number);
-                        if (!isNaN(latitude) && !isNaN(longitude)) {
-                            eventsWithCoords.push({ event, latitude, longitude });
-                        }
-                    } else if (event.physicalAddress) {
-                        eventsToGeocode.push(event);
+                        return { event, latitude, longitude };
                     }
-                });
-                
-                // Geocode events that need it
-                const geocodePromises = eventsToGeocode.map(async (event) => {
-                    const { description, locality, region, country } = event.physicalAddress;
-                    // Construct a query string, filtering out null/undefined parts
-                    const addressQuery = [description, locality, region, country].filter(Boolean).join(', ');
-                    
-                    if (!addressQuery) return null;
-
-                    const nominatimUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(addressQuery)}`;
-                    
-                    try {
-                        const geoResponse = await fetch(nominatimUrl);
-                        const geoData = await geoResponse.json();
-                        if (geoData && geoData.length > 0) {
-                            return {
-                                event,
-                                latitude: parseFloat(geoData[0].lat),
-                                longitude: parseFloat(geoData[0].lon)
-                            };
-                        }
-                    } catch (e) {
-                        console.error(`Geokoding feila for "${addressQuery}":`, e);
+                    if (event.physicalAddress) {
+                        const { description, locality, region, country } = event.physicalAddress;
+                        const addressQuery = [description, locality, region, country].filter(Boolean).join(', ');
+                        if (!addressQuery) return null;
+                        const nominatimUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(addressQuery)}`;
+                        try {
+                            const geoResponse = await fetch(nominatimUrl);
+                            const geoData = await geoResponse.json();
+                            if (geoData?.length > 0) {
+                                return { event, latitude: parseFloat(geoData[0].lat), longitude: parseFloat(geoData[0].lon) };
+                            }
+                        } catch (e) { console.error(`Geokoding feila for "${addressQuery}":`, e); }
                     }
                     return null;
                 });
                 
-                const geocodedEvents = (await Promise.all(geocodePromises)).filter(Boolean);
-                const allMappableEvents = [...eventsWithCoords, ...geocodedEvents];
+                const allMappableEvents = (await Promise.all(geocodePromises)).filter(Boolean);
+                mobilizonEventData = allMappableEvents;
 
                 if (allMappableEvents.length === 0) {
                      showMessage('Fann ingen offentlege hendingar med ein gyldig fysisk plassering.');
-                     eventListContainer.innerHTML = '<p class="text-gray-500">Ingen hendingar med gyldig plassering funne.</p>';
+                     populateMobilizonList([]);
                      return;
                 }
-                
-                const dateTimeFormatter = new Intl.DateTimeFormat('nb-NO', {
-                    weekday: 'long',
-                    day: 'numeric',
-                    month: 'long',
-                    hour: 'numeric',
-                    minute: 'numeric',
-                    timeZone: 'Europe/Oslo'
-                });
 
                 allMappableEvents.forEach(({ event, latitude, longitude }) => {
-                    const { description, locality } = event.physicalAddress || {};
                     const marker = L.marker([latitude, longitude]);
-                    
+                     const { description, locality } = event.physicalAddress || {};
                     const locationText = locality || description || 'Stad ikkje spesifisert';
-                    let formattedDate = '';
-                    if (event.beginsOn) {
-                        formattedDate = dateTimeFormatter.format(new Date(event.beginsOn));
-                    }
-
-                    const popupContent = `
-                        <h3 class="font-bold text-lg mb-1">
-                            <a href="${event.url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800">${event.title}</a>
-                        </h3>
-                        <p class="text-gray-700">${locationText}</p>
-                        ${formattedDate ? `<p class="text-gray-600 font-medium">${formattedDate}</p>` : ''}
-                    `;
-                    
+                    let formattedDate = event.beginsOn ? new Intl.DateTimeFormat('nb-NO', {weekday: 'long', day: 'numeric', month: 'long', hour: 'numeric', minute: 'numeric', timeZone: 'Europe/Oslo'}).format(new Date(event.beginsOn)) : '';
+                    const popupContent = `<h3 class="font-bold text-lg mb-1"><a href="${event.url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800">${event.title}</a></h3><p class="text-gray-700">${locationText}</p>${formattedDate ? `<p class="text-gray-600 font-medium">${formattedDate}</p>` : ''}`;
                     marker.bindPopup(popupContent);
-                    markers.addLayer(marker);
-
-                    // Create and append the list item
-                    const listItem = document.createElement('div');
-                    listItem.className = 'p-4 border-b last:border-b-0 hover:bg-gray-50 transition cursor-pointer';
-                    listItem.innerHTML = `
-                        <h3 class="font-bold text-lg">
-                            <a href="${event.url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800">${event.title}</a>
-                        </h3>
-                        <p class="text-gray-700">${locationText} - <span class="font-medium">${formattedDate}</span></p>
-                    `;
-                    listItem.addEventListener('click', () => {
-                        map.setView([latitude, longitude], 15);
-                        // To open the popup on a clustered marker, we need to zoom in first.
-                        markers.zoomToShowLayer(marker, () => {
-                            marker.openPopup();
-                        });
-                    });
-                    eventListContainer.appendChild(listItem);
+                    mobilizonMarkers.addLayer(marker);
                 });
 
-                // Adjust map view to fit all markers
-                if (allMappableEvents.length > 0) {
-                    map.fitBounds(markers.getBounds(), { padding: [50, 50] });
+                populateMobilizonList(mobilizonEventData);
+                map.addLayer(mobilizonMarkers);
+                if (mobilizonEventData.length > 0) {
+                    map.fitBounds(mobilizonMarkers.getBounds(), { padding: [50, 50] });
                 }
                 
                 hideOverlay();
 
             } catch (error) {
                 console.error('Failed to fetch events:', error);
-                showMessage(`Feil: Kunne ikkje laste hendingar. Sjekk URL-en og konsollen for detaljar.`);
+                showMessage(`Feil: Kunne ikkje laste hendingar. Sjekk konsollen for detaljar.`);
             }
         };
 
-        // Event listener for the form submission
-        form.addEventListener('submit', (e) => {
-            e.preventDefault();
-            const instanceUrl = document.getElementById('instance-url').value;
-            const groupName = document.getElementById('group-name').value;
-            const isBergenSearch = bergenCheckbox.checked;
+        // Event listener for the toggle button
+        toggleBtn.addEventListener('click', () => {
+            isShowingMobilizon = !isShowingMobilizon;
 
-            if (instanceUrl) {
-                fetchAndDisplayEvents(instanceUrl, groupName, isBergenSearch);
+            if (isShowingMobilizon) {
+                // Show Mobilizon BLL Events
+                if (map.hasLayer(uMapMarkers)) {
+                    map.removeLayer(uMapMarkers);
+                }
+                map.addLayer(mobilizonMarkers);
+                listTitle.textContent = "Hendingar";
+                populateMobilizonList(mobilizonEventData);
+                toggleBtn.textContent = "Det store garasjesalget 2025";
+                toggleBtn.classList.replace('bg-blue-600', 'bg-green-600');
+                toggleBtn.classList.replace('hover:bg-blue-700', 'hover:bg-green-700');
+                 if (mobilizonEventData.length > 0) {
+                    map.fitBounds(mobilizonMarkers.getBounds(), { padding: [50, 50] });
+                }
             } else {
-                showMessage("Ver venleg og skriv inn ein Mobilizon-instans URL.");
+                // Show uMap Garage Sale
+                if (map.hasLayer(mobilizonMarkers)) {
+                    map.removeLayer(mobilizonMarkers);
+                }
+                map.addLayer(uMapMarkers);
+                listTitle.textContent = "Garasjesal-adresser";
+                populateUMapList();
+                toggleBtn.textContent = "Vis BLL-hendingar";
+                toggleBtn.classList.replace('bg-green-600', 'bg-blue-600');
+                toggleBtn.classList.replace('hover:bg-green-700', 'hover:bg-blue-700');
+                 if (uMapData.length > 0) {
+                    map.fitBounds(uMapMarkers.getBounds(), { padding: [50, 50] });
+                }
             }
         });
 
-        // Accordion functionality
-        accordionHeader.addEventListener('click', () => {
-            accordionBody.classList.toggle('hidden');
-            accordionArrow.classList.toggle('rotate-180');
-        });
 
-        // Disable group input when Bergen search is checked
-        bergenCheckbox.addEventListener('change', () => {
-            if (bergenCheckbox.checked) {
-                groupInput.disabled = true;
-                groupInput.classList.add('bg-gray-200');
-            } else {
-                groupInput.disabled = false;
-                groupInput.classList.remove('bg-gray-200');
-            }
-        });
-
-        // Initial load with the default values
+        // Initial load
         window.addEventListener('load', () => {
-            const instanceUrl = document.getElementById('instance-url').value;
-            const groupName = document.getElementById('group-name').value;
-            const isBergenSearch = bergenCheckbox.checked;
-            fetchAndDisplayEvents(instanceUrl, groupName, isBergenSearch);
+            fetchAndDisplayEvents();
+            processAndDisplayUMapLayer();
         });
     </script>
 </body>
 </html>
+
