@@ -3,14 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mobilizon Event Map</title>
+    <title>Hendingskart for Bærekraftige Liv Landås</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
      crossorigin=""/>
+    <!-- Marker Cluster CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
+    
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
      crossorigin=""></script>
+    <!-- Marker Cluster JS -->
+    <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
+    <!-- Geohash library is now included directly in the script below -->
+
     <style>
         /* Set a default height for the map container */
         #map {
@@ -30,29 +38,60 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        .marker-cluster-small {
+            background-color: rgba(18, 115, 222, 0.6);
+        }
+        .marker-cluster-small div {
+            background-color: rgba(18, 103, 222, 0.6);
+        }
     </style>
 </head>
 <body class="bg-gray-100 font-sans antialiased text-gray-800">
 
     <div class="container mx-auto p-4 md:p-8">
         <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
-            <h1 class="text-3xl font-bold text-gray-900 mb-2">Mobilizon Event Map</h1>
-            <p class="text-gray-600">Enter the base URL of a Mobilizon instance (e.g., <code class="bg-gray-200 p-1 rounded">https://mobilizon.fr</code>) to display its public events on the map below. Now with Nominatim geocoding to find events with text addresses!</p>
+            <h1 class="text-3xl font-bold text-gray-900 mb-2">Hendingskart for Bærekraftige Liv Landås</h1>
         </div>
 
         <!-- Form for user input -->
         <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
-            <form id="mobilizon-form" class="grid grid-cols-1 md:grid-cols-5 gap-4 items-center">
+            <form id="mobilizon-form" class="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+                
+                <!-- Accordion Container (2/3 width) -->
                 <div class="md:col-span-2">
-                    <label for="instance-url" class="sr-only">Mobilizon Instance URL</label>
-                    <input type="text" id="instance-url" placeholder="https://mobilizon.fr" class="w-full px-4 py-2 text-gray-700 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-200" value="https://gjer.no">
+                    <!-- Accordion Header -->
+                    <div id="accordion-header" class="flex justify-between items-center cursor-pointer">
+                        <h2 class="text-xl font-bold text-gray-900">Endre søkefilter</h2>
+                        <svg id="accordion-arrow" class="w-6 h-6 transition-transform transform" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" >
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                        </svg>
+                    </div>
+        
+                    <!-- Accordion Body (contains the inputs) -->
+                    <div id="accordion-body" class="hidden mt-4">
+                        <div class="mb-4 border-b pb-4">
+                            <label class="flex items-center space-x-2 cursor-pointer">
+                                <input type="checkbox" id="search-bergen" class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                <span class="text-gray-700 font-medium">Alt i Bergen (også utanfor Bærekraftige Liv Landås)</span>
+                            </label>
+                        </div>
+                        <p class="text-gray-600 mb-4">
+                            Eller, legg til Mobilizon-instans (td., <code class="bg-gray-200 p-1 rounded">https://gjer.no</code>)
+                            og eventuelt gruppenamn (td., <code class="bg-gray-200 p-1 rounded">bll</code>) for å vise hendingar.
+                        </p>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+                            <label for="instance-url" class="sr-only">Mobilizon-instans</label>
+                            <input type="text" id="instance-url" placeholder="Mobilizon-instans" class="w-full px-4 py-2 text-gray-700 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-200" value="https://gjer.no">
+                            
+                            <label for="group-name" class="sr-only">Gruppenamn (valgfritt)</label>
+                            <input type="text" id="group-name" placeholder="Gruppenamn (valfritt)" class="w-full px-4 py-2 text-gray-700 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-200" value="bll">
+                        </div>
+                    </div>
                 </div>
-                <div class="md:col-span-2">
-                    <label for="group-name" class="sr-only">Group Username (optional)</label>
-                                        <input type="text" id="group-name" placeholder="Group username (optional)" class="w-full px-4 py-2 text-gray-700 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-200" value="bll">
-                </div>
-                <button type="submit" class="md:col-span-1 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg transition duration-200 shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                    Load Events
+
+                <!-- Button (1/3 width) -->
+                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg transition duration-200 shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 self-center">
+                    Last hendingar
                 </button>
             </form>
         </div>
@@ -67,29 +106,88 @@
             </div>
         </div>
 
+        <!-- Event List Section -->
+        <div class="bg-white rounded-xl shadow-lg p-6 mt-6">
+            <h2 class="text-2xl font-bold text-gray-900 mb-4">Hendingar</h2>
+            <div id="event-list" class="space-y-4 max-h-96 overflow-y-auto">
+                <!-- Event items will be inserted here by JavaScript -->
+                <p class="text-gray-500">Lastar hendingar...</p>
+            </div>
+        </div>
+
     </div>
 
     <script>
         // DOM element references
         const form = document.getElementById('mobilizon-form');
         const urlInput = document.getElementById('instance-url');
+        const groupInput = document.getElementById('group-name');
+        const bergenCheckbox = document.getElementById('search-bergen');
         const mapOverlay = document.getElementById('map-overlay');
         const loader = document.getElementById('loader');
         const messageArea = document.getElementById('message-area');
+        const eventListContainer = document.getElementById('event-list');
+        const accordionHeader = document.getElementById('accordion-header');
+        const accordionBody = document.getElementById('accordion-body');
+        const accordionArrow = document.getElementById('accordion-arrow');
+
+        // --- Start of Self-contained Geohash implementation ---
+        const BASE32 = '0123456789bcdefghjkmnpqrstuvwxyz';
+        const encodeGeohash = (latitude, longitude, precision) => {
+            let latRange = { min: -90, max: 90 };
+            let lonRange = { min: -180, max: 180 };
+            let geohash = '';
+            let isEven = true;
+            let bit = 0;
+            let ch = 0;
+
+            while (geohash.length < precision) {
+                if (isEven) {
+                    const mid = (lonRange.min + lonRange.max) / 2;
+                    if (longitude > mid) {
+                        ch |= (1 << (4 - bit));
+                        lonRange.min = mid;
+                    } else {
+                        lonRange.max = mid;
+                    }
+                } else {
+                    const mid = (latRange.min + latRange.max) / 2;
+                    if (latitude > mid) {
+                        ch |= (1 << (4 - bit));
+                        latRange.min = mid;
+                    } else {
+                        latRange.max = mid;
+                    }
+                }
+
+                isEven = !isEven;
+                bit++;
+
+                if (bit === 5) {
+                    geohash += BASE32[ch];
+                    bit = 0;
+                    ch = 0;
+                }
+            }
+            return geohash;
+        };
+        // --- End of Self-contained Geohash implementation ---
+
 
         // Initialize map
-        const map = L.map('map').setView([47, 2], 4); // Centered on Europe
+        const map = L.map('map').setView([60.39, 5.32], 13); // Centered on Bergen
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(map);
 
-        // Layer group to manage markers
-        let markersLayer = L.layerGroup().addTo(map);
+        // Layer group to manage clustered markers
+        let markers = L.markerClusterGroup();
+        map.addLayer(markers);
 
-        // GraphQL query to fetch all public events
+        // GraphQL query to fetch all public events (can include location filters)
         const allEventsQuery = `
-            query SearchEvents($beginsOn: DateTime) {
-                searchEvents(beginsOn: $beginsOn) {
+            query SearchEvents($beginsOn: DateTime, $location: String, $radius: Float) {
+                searchEvents(beginsOn: $beginsOn, location: $location, radius: $radius) {
                     elements {
                         title
                         url
@@ -140,21 +238,33 @@
         };
 
         // Function to fetch and display events
-        const fetchAndDisplayEvents = async (instanceUrl, groupName) => {
-            markersLayer.clearLayers(); // Clear previous markers
-            showMessage('Loading events...', true);
+        const fetchAndDisplayEvents = async (instanceUrl, groupName, isBergenSearch) => {
+            markers.clearLayers(); // Clear previous markers from the cluster group
+            eventListContainer.innerHTML = ''; // Clear previous list
+            showMessage('Lastar hendingar...', true);
 
             try {
                 // Determine which query and variables to use
-                const isGroupSearch = groupName && groupName.trim() !== '';
-                const query = isGroupSearch ? groupEventsQuery : allEventsQuery;
+                const isGroupSearch = !isBergenSearch && groupName && groupName.trim() !== '';
+                let query;
                 const variables = {};
+
                 if (isGroupSearch) {
+                    query = groupEventsQuery;
                     variables.groupName = groupName.trim();
                 } else {
+                    // Both Bergen search and instance-wide search use searchEvents
+                    query = allEventsQuery;
                     variables.beginsOn = new Date().toISOString();
+                    if (isBergenSearch) {
+                        const bergenLat = 60.39;
+                        const bergenLon = 5.32;
+                        // Use the self-contained geohash function
+                        variables.location = encodeGeohash(bergenLat, bergenLon, 6); // Precision 6 is ~0.6km
+                        variables.radius = 25; // 25 km
+                    }
                 }
-
+                
                 // Ensure URL has a protocol
                 let url = instanceUrl.trim();
                 if (!url.startsWith('http')) {
@@ -172,7 +282,7 @@
                 });
 
                 if (!response.ok) {
-                    throw new Error(`Network response was not ok: ${response.statusText}`);
+                    throw new Error(`Nettverksrespons var ikkje ok: ${response.statusText}`);
                 }
 
                 const result = await response.json();
@@ -187,7 +297,8 @@
                     if (result.data.group && result.data.group.organizedEvents) {
                         rawEvents = result.data.group.organizedEvents.elements;
                     } else {
-                         showMessage(`Group "${groupName}" not found or has no events.`);
+                         showMessage(`Fann ikkje gruppa "${groupName}" eller ho har ingen hendingar.`);
+                         eventListContainer.innerHTML = `<p class="text-gray-500">Fann ikkje gruppa "${groupName}" eller ho har ingen hendingar.</p>`;
                          return;
                     }
                 } else {
@@ -202,7 +313,8 @@
 
 
                 if (!events || events.length === 0) {
-                    showMessage('No upcoming public events found for this search.');
+                    showMessage('Fann ingen komande offentlege hendingar for dette søket.');
+                    eventListContainer.innerHTML = '<p class="text-gray-500">Ingen hendingar å vise.</p>';
                     return;
                 }
 
@@ -228,8 +340,6 @@
                     
                     if (!addressQuery) return null;
 
-                    // Note: Nominatim has a strict usage policy (max 1 req/sec). 
-                    // For high-volume use, a dedicated geocoding service or local instance is better.
                     const nominatimUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(addressQuery)}`;
                     
                     try {
@@ -243,7 +353,7 @@
                             };
                         }
                     } catch (e) {
-                        console.error(`Geocoding failed for "${addressQuery}":`, e);
+                        console.error(`Geokoding feila for "${addressQuery}":`, e);
                     }
                     return null;
                 });
@@ -252,37 +362,54 @@
                 const allMappableEvents = [...eventsWithCoords, ...geocodedEvents];
 
                 if (allMappableEvents.length === 0) {
-                     showMessage('No public events with a valid physical location were found.');
+                     showMessage('Fann ingen offentlege hendingar med ein gyldig fysisk plassering.');
+                     eventListContainer.innerHTML = '<p class="text-gray-500">Ingen hendingar med gyldig plassering funne.</p>';
                      return;
                 }
                 
-                const bounds = [];
                 allMappableEvents.forEach(({ event, latitude, longitude }) => {
-                    const { description, locality } = event.physicalAddress;
+                    const { description, locality } = event.physicalAddress || {};
                     const marker = L.marker([latitude, longitude]);
                     
                     const popupContent = `
                         <h3 class="font-bold text-lg mb-1">
                             <a href="${event.url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800">${event.title}</a>
                         </h3>
-                        <p class="text-gray-700">${locality || description}</p>
+                        <p class="text-gray-700">${locality || description || 'Stad ikkje spesifisert'}</p>
                     `;
                     
                     marker.bindPopup(popupContent);
-                    markersLayer.addLayer(marker);
-                    bounds.push([latitude, longitude]);
+                    markers.addLayer(marker);
+
+                    // Create and append the list item
+                    const listItem = document.createElement('div');
+                    listItem.className = 'p-4 border-b last:border-b-0 hover:bg-gray-50 transition cursor-pointer';
+                    listItem.innerHTML = `
+                        <h3 class="font-bold text-lg">
+                            <a href="${event.url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800">${event.title}</a>
+                        </h3>
+                        <p class="text-gray-700">${locality || description || 'Stad ikkje spesifisert'}</p>
+                    `;
+                    listItem.addEventListener('click', () => {
+                        map.setView([latitude, longitude], 15);
+                        // To open the popup on a clustered marker, we need to zoom in first.
+                        markers.zoomToShowLayer(marker, () => {
+                            marker.openPopup();
+                        });
+                    });
+                    eventListContainer.appendChild(listItem);
                 });
 
                 // Adjust map view to fit all markers
-                if (bounds.length > 0) {
-                    map.fitBounds(bounds, { padding: [50, 50] });
+                if (allMappableEvents.length > 0) {
+                    map.fitBounds(markers.getBounds(), { padding: [50, 50] });
                 }
                 
                 hideOverlay();
 
             } catch (error) {
                 console.error('Failed to fetch events:', error);
-                showMessage(`Error: Could not load events. Please check the URL and console for details.`);
+                showMessage(`Feil: Kunne ikkje laste hendingar. Sjekk URL-en og konsollen for detaljar.`);
             }
         };
 
@@ -291,21 +418,39 @@
             e.preventDefault();
             const instanceUrl = document.getElementById('instance-url').value;
             const groupName = document.getElementById('group-name').value;
+            const isBergenSearch = bergenCheckbox.checked;
+
             if (instanceUrl) {
-                fetchAndDisplayEvents(instanceUrl, groupName);
+                fetchAndDisplayEvents(instanceUrl, groupName, isBergenSearch);
             } else {
-                showMessage("Please enter a Mobilizon instance URL.");
+                showMessage("Ver venleg og skriv inn ein Mobilizon-instans URL.");
             }
         });
 
-        // Initial load with the default value
+        // Accordion functionality
+        accordionHeader.addEventListener('click', () => {
+            accordionBody.classList.toggle('hidden');
+            accordionArrow.classList.toggle('rotate-180');
+        });
+
+        // Disable group input when Bergen search is checked
+        bergenCheckbox.addEventListener('change', () => {
+            if (bergenCheckbox.checked) {
+                groupInput.disabled = true;
+                groupInput.classList.add('bg-gray-200');
+            } else {
+                groupInput.disabled = false;
+                groupInput.classList.remove('bg-gray-200');
+            }
+        });
+
+        // Initial load with the default values
         window.addEventListener('load', () => {
             const instanceUrl = document.getElementById('instance-url').value;
             const groupName = document.getElementById('group-name').value;
-            fetchAndDisplayEvents(instanceUrl, groupName);
+            const isBergenSearch = bergenCheckbox.checked;
+            fetchAndDisplayEvents(instanceUrl, groupName, isBergenSearch);
         });
     </script>
 </body>
 </html>
-
-
