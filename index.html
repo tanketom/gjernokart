@@ -191,6 +191,7 @@
                     elements {
                         title
                         url
+                        beginsOn
                         physicalAddress {
                             description
                             locality
@@ -211,6 +212,7 @@
                         elements {
                             title
                             url
+                            beginsOn
                             endsOn
                             physicalAddress {
                                 description
@@ -367,15 +369,31 @@
                      return;
                 }
                 
+                const dateTimeFormatter = new Intl.DateTimeFormat('nb-NO', {
+                    weekday: 'long',
+                    day: 'numeric',
+                    month: 'long',
+                    hour: 'numeric',
+                    minute: 'numeric',
+                    timeZone: 'Europe/Oslo'
+                });
+
                 allMappableEvents.forEach(({ event, latitude, longitude }) => {
                     const { description, locality } = event.physicalAddress || {};
                     const marker = L.marker([latitude, longitude]);
                     
+                    const locationText = locality || description || 'Stad ikkje spesifisert';
+                    let formattedDate = '';
+                    if (event.beginsOn) {
+                        formattedDate = dateTimeFormatter.format(new Date(event.beginsOn));
+                    }
+
                     const popupContent = `
                         <h3 class="font-bold text-lg mb-1">
                             <a href="${event.url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800">${event.title}</a>
                         </h3>
-                        <p class="text-gray-700">${locality || description || 'Stad ikkje spesifisert'}</p>
+                        <p class="text-gray-700">${locationText}</p>
+                        ${formattedDate ? `<p class="text-gray-600 font-medium">${formattedDate}</p>` : ''}
                     `;
                     
                     marker.bindPopup(popupContent);
@@ -388,7 +406,7 @@
                         <h3 class="font-bold text-lg">
                             <a href="${event.url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800">${event.title}</a>
                         </h3>
-                        <p class="text-gray-700">${locality || description || 'Stad ikkje spesifisert'}</p>
+                        <p class="text-gray-700">${locationText} - <span class="font-medium">${formattedDate}</span></p>
                     `;
                     listItem.addEventListener('click', () => {
                         map.setView([latitude, longitude], 15);
