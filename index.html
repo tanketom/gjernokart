@@ -1,65 +1,311 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Mobilizon Events Map</title>
-    <meta charset="utf-8" />
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <title>Mobilizon Event Map</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+     integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+     crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+     integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+     crossorigin=""></script>
     <style>
-        #map { height: 600px; }
+        /* Set a default height for the map container */
+        #map {
+            height: 70vh;
+            width: 100%;
+        }
+        /* Simple spinner animation */
+        .loader {
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #3498db;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
-<body>
+<body class="bg-gray-100 font-sans antialiased text-gray-800">
 
-<div id="map"></div>
+    <div class="container mx-auto p-4 md:p-8">
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+            <h1 class="text-3xl font-bold text-gray-900 mb-2">Mobilizon Event Map</h1>
+            <p class="text-gray-600">Enter the base URL of a Mobilizon instance (e.g., <code class="bg-gray-200 p-1 rounded">https://mobilizon.fr</code>) to display its public events on the map below. Now with Nominatim geocoding to find events with text addresses!</p>
+        </div>
 
-<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
-<script>
-    // 1. Initialize the map
-    var map = L.map('map').setView([51.505, -0.09], 2); // Default view
+        <!-- Form for user input -->
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+            <form id="mobilizon-form" class="grid grid-cols-1 md:grid-cols-5 gap-4 items-center">
+                <div class="md:col-span-2">
+                    <label for="instance-url" class="sr-only">Mobilizon Instance URL</label>
+                    <input type="text" id="instance-url" placeholder="https://mobilizon.fr" class="w-full px-4 py-2 text-gray-700 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-200" value="https://gjer.no">
+                </div>
+                <div class="md:col-span-2">
+                    <label for="group-name" class="sr-only">Group Username (optional)</label>
+                    <input type="text" id="group-name" placeholder="Group username (optional)" class="w-full px-4 py-2 text-gray-700 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-200">
+                </div>
+                <button type="submit" class="md:col-span-1 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg transition duration-200 shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                    Load Events
+                </button>
+            </form>
+        </div>
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-    }).addTo(map);
+        <!-- Map and Loading/Error states -->
+        <div class="bg-white rounded-xl shadow-lg p-2 relative">
+             <div id="map" class="rounded-lg z-0"></div>
+             <!-- Overlay for loading spinner and messages -->
+             <div id="map-overlay" class="absolute inset-0 bg-white bg-opacity-75 flex-col items-center justify-center rounded-lg z-10 hidden">
+                <div id="loader" class="loader mb-4"></div>
+                <p id="message-area" class="text-gray-700 font-semibold text-lg"></p>
+            </div>
+        </div>
 
-    // 2. Fetch events from Mobilizon instance
-    fetch('https://gjer.no/api', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            query: `
-                query {
-                  events(isPublic: true) {
+    </div>
+
+    <script>
+        // DOM element references
+        const form = document.getElementById('mobilizon-form');
+        const urlInput = document.getElementById('instance-url');
+        const mapOverlay = document.getElementById('map-overlay');
+        const loader = document.getElementById('loader');
+        const messageArea = document.getElementById('message-area');
+
+        // Initialize map
+        const map = L.map('map').setView([47, 2], 4); // Centered on Europe
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        // Layer group to manage markers
+        let markersLayer = L.layerGroup().addTo(map);
+
+        // GraphQL query to fetch all public events
+        const allEventsQuery = `
+            query SearchEvents($beginsOn: DateTime) {
+                searchEvents(beginsOn: $beginsOn) {
                     elements {
-                      title
-                      url
-                      physicalAddress {
-                        latitude
-                        longitude
-                      }
+                        title
+                        url
+                        physicalAddress {
+                            description
+                            locality
+                            region
+                            country
+                            geom
+                        }
                     }
-                  }
                 }
-            `
-        })
-    })
-    .then(res => res.json())
-    .then(data => {
-        const events = data.data.events.elements;
+            }
+        `;
 
-        // 3. Add markers to the map
-        events.forEach(event => {
-            if (event.physicalAddress && event.physicalAddress.latitude && event.physicalAddress.longitude) {
-                L.marker([event.physicalAddress.latitude, event.physicalAddress.longitude])
-                    .addTo(map)
-                    .bindPopup(`<b><a href="${event.url}" target="_blank">${event.title}</a></b>`);
+        // GraphQL query to fetch events for a specific group
+        const groupEventsQuery = `
+            query GroupEvents($groupName: String!) {
+                group(preferredUsername: $groupName) {
+                    organizedEvents {
+                        elements {
+                            title
+                            url
+                            endsOn
+                            physicalAddress {
+                                description
+                                locality
+                                region
+                                country
+                                geom
+                            }
+                        }
+                    }
+                }
+            }
+        `;
+
+        // Function to show a message on the map overlay
+        const showMessage = (message, showLoader = false) => {
+            mapOverlay.style.display = 'flex';
+            loader.style.display = showLoader ? 'block' : 'none';
+            messageArea.textContent = message;
+        };
+        
+        // Function to hide the overlay
+        const hideOverlay = () => {
+            mapOverlay.style.display = 'none';
+        };
+
+        // Function to fetch and display events
+        const fetchAndDisplayEvents = async (instanceUrl, groupName) => {
+            markersLayer.clearLayers(); // Clear previous markers
+            showMessage('Loading events...', true);
+
+            try {
+                // Determine which query and variables to use
+                const isGroupSearch = groupName && groupName.trim() !== '';
+                const query = isGroupSearch ? groupEventsQuery : allEventsQuery;
+                const variables = {};
+                if (isGroupSearch) {
+                    variables.groupName = groupName.trim();
+                } else {
+                    variables.beginsOn = new Date().toISOString();
+                }
+
+                // Ensure URL has a protocol
+                let url = instanceUrl.trim();
+                if (!url.startsWith('http')) {
+                   url = 'https://' + url;
+                }
+                const apiUrl = new URL('/api', url).href;
+                
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                    body: JSON.stringify({ 
+                        query: query,
+                        variables: variables
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Network response was not ok: ${response.statusText}`);
+                }
+
+                const result = await response.json();
+
+                if (result.errors) {
+                    console.error('GraphQL Errors:', result.errors);
+                    throw new Error(result.errors.map(e => e.message).join('\n'));
+                }
+                
+                let rawEvents = [];
+                if (isGroupSearch) {
+                    if (result.data.group && result.data.group.organizedEvents) {
+                        rawEvents = result.data.group.organizedEvents.elements;
+                    } else {
+                         showMessage(`Group "${groupName}" not found or has no events.`);
+                         return;
+                    }
+                } else {
+                    rawEvents = result.data.searchEvents.elements;
+                }
+
+                // For group searches, we filter upcoming events on the client side
+                const now = new Date();
+                const events = isGroupSearch
+                    ? rawEvents.filter(event => event.endsOn && new Date(event.endsOn) >= now)
+                    : rawEvents;
+
+
+                if (!events || events.length === 0) {
+                    showMessage('No upcoming public events found for this search.');
+                    return;
+                }
+
+                const eventsToGeocode = [];
+                const eventsWithCoords = [];
+
+                events.forEach(event => {
+                    if (event.physicalAddress?.geom && typeof event.physicalAddress.geom === 'string' && event.physicalAddress.geom.includes(';')) {
+                        const [longitude, latitude] = event.physicalAddress.geom.split(';').map(Number);
+                        if (!isNaN(latitude) && !isNaN(longitude)) {
+                            eventsWithCoords.push({ event, latitude, longitude });
+                        }
+                    } else if (event.physicalAddress) {
+                        eventsToGeocode.push(event);
+                    }
+                });
+                
+                // Geocode events that need it
+                const geocodePromises = eventsToGeocode.map(async (event) => {
+                    const { description, locality, region, country } = event.physicalAddress;
+                    // Construct a query string, filtering out null/undefined parts
+                    const addressQuery = [description, locality, region, country].filter(Boolean).join(', ');
+                    
+                    if (!addressQuery) return null;
+
+                    // Note: Nominatim has a strict usage policy (max 1 req/sec). 
+                    // For high-volume use, a dedicated geocoding service or local instance is better.
+                    const nominatimUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(addressQuery)}`;
+                    
+                    try {
+                        const geoResponse = await fetch(nominatimUrl);
+                        const geoData = await geoResponse.json();
+                        if (geoData && geoData.length > 0) {
+                            return {
+                                event,
+                                latitude: parseFloat(geoData[0].lat),
+                                longitude: parseFloat(geoData[0].lon)
+                            };
+                        }
+                    } catch (e) {
+                        console.error(`Geocoding failed for "${addressQuery}":`, e);
+                    }
+                    return null;
+                });
+                
+                const geocodedEvents = (await Promise.all(geocodePromises)).filter(Boolean);
+                const allMappableEvents = [...eventsWithCoords, ...geocodedEvents];
+
+                if (allMappableEvents.length === 0) {
+                     showMessage('No public events with a valid physical location were found.');
+                     return;
+                }
+                
+                const bounds = [];
+                allMappableEvents.forEach(({ event, latitude, longitude }) => {
+                    const { description, locality } = event.physicalAddress;
+                    const marker = L.marker([latitude, longitude]);
+                    
+                    const popupContent = `
+                        <h3 class="font-bold text-lg mb-1">
+                            <a href="${event.url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800">${event.title}</a>
+                        </h3>
+                        <p class="text-gray-700">${locality || description}</p>
+                    `;
+                    
+                    marker.bindPopup(popupContent);
+                    markersLayer.addLayer(marker);
+                    bounds.push([latitude, longitude]);
+                });
+
+                // Adjust map view to fit all markers
+                if (bounds.length > 0) {
+                    map.fitBounds(bounds, { padding: [50, 50] });
+                }
+                
+                hideOverlay();
+
+            } catch (error) {
+                console.error('Failed to fetch events:', error);
+                showMessage(`Error: Could not load events. Please check the URL and console for details.`);
+            }
+        };
+
+        // Event listener for the form submission
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const instanceUrl = document.getElementById('instance-url').value;
+            const groupName = document.getElementById('group-name').value;
+            if (instanceUrl) {
+                fetchAndDisplayEvents(instanceUrl, groupName);
+            } else {
+                showMessage("Please enter a Mobilizon instance URL.");
             }
         });
-    })
-    .catch(error => console.error('Error fetching events:', error));
-</script>
 
+        // Initial load with the default value
+        window.addEventListener('load', () => {
+            const instanceUrl = document.getElementById('instance-url').value;
+            const groupName = document.getElementById('group-name').value;
+            fetchAndDisplayEvents(instanceUrl, groupName);
+        });
+    </script>
 </body>
 </html>
+
+
