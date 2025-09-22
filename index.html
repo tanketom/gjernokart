@@ -63,9 +63,9 @@
             </div>
         </div>
         
-        <!-- View Toggle Button -->
-        <div class="mt-4">
-             <button id="toggle-view-btn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg transition duration-200 shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+        <!-- Action Buttons -->
+        <div class="mt-4 flex gap-4">
+             <button id="toggle-view-btn" class="flex-grow bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg transition duration-200 shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
                 Det store garasjesalget 2025
             </button>
         </div>
@@ -146,14 +146,15 @@
         
         // State management
         let isShowingMobilizon = true;
-        let mobilizonEventData = [];
+        let allUpcomingMobilizonEvents = []; // Holds all events, physical and online
+        let mappableMobilizonEvents = []; // Holds only events that can be put on the map
         const uMapData = []; // Will hold processed uMap data for the list
 
         // GraphQL query to fetch events for a specific group
         const groupEventsQuery = `
             query GroupEvents($groupName: String!) {
                 group(preferredUsername: $groupName) {
-                    organizedEvents {
+                    organizedEvents(limit: 100) {
                         elements {
                             title
                             url
@@ -187,9 +188,9 @@
             mapOverlay.style.display = 'none';
         };
 
-        const populateMobilizonList = (events) => {
+        const populateMobilizonList = (allEvents, mappableEvents) => {
             eventListContainer.innerHTML = '';
-            if (events.length === 0) {
+            if (allEvents.length === 0) {
                 eventListContainer.innerHTML = '<p class="text-gray-500">Ingen hendingar å vise.</p>';
                 return;
             }
@@ -198,26 +199,35 @@
                 weekday: 'long', day: 'numeric', month: 'long', hour: 'numeric', minute: 'numeric', timeZone: 'Europe/Oslo'
             });
 
-            events.forEach(({ event, latitude, longitude }) => {
-                const { description, locality } = event.physicalAddress || {};
-                const locationText = locality || description || 'Stad ikkje spesifisert';
+            allEvents.forEach(event => {
+                const mappableVersion = mappableEvents.find(me => me.event.url === event.url);
+                
+                const listItem = document.createElement('div');
+                listItem.className = 'p-4 border-b last:border-b-0'; // Base class
+                let locationText;
                 let formattedDate = event.beginsOn ? dateTimeFormatter.format(new Date(event.beginsOn)) : '';
 
-                const listItem = document.createElement('div');
-                listItem.className = 'p-4 border-b last:border-b-0 hover:bg-gray-50 transition cursor-pointer';
+                if (mappableVersion) {
+                    const { description, locality } = mappableVersion.event.physicalAddress || {};
+                    locationText = locality || description || 'Stad ikkje spesifisert';
+                    listItem.classList.add('hover:bg-gray-50', 'transition', 'cursor-pointer');
+                    listItem.addEventListener('click', () => {
+                        map.setView([mappableVersion.latitude, mappableVersion.longitude], 15);
+                        const markerToFind = mobilizonMarkers.getLayers().find(m => m.getLatLng().equals(L.latLng(mappableVersion.latitude, mappableVersion.longitude)));
+                        if (markerToFind) {
+                            mobilizonMarkers.zoomToShowLayer(markerToFind, () => markerToFind.openPopup());
+                        }
+                    });
+                } else {
+                     locationText = `<span class="font-semibold text-blue-600">Online hending</span>`;
+                }
+
                 listItem.innerHTML = `
                     <h3 class="font-bold text-lg">
                         <a href="${event.url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800">${event.title}</a>
                     </h3>
                     <p class="text-gray-700">${locationText} - <span class="font-medium">${formattedDate}</span></p>
                 `;
-                listItem.addEventListener('click', () => {
-                    map.setView([latitude, longitude], 15);
-                    const markerToFind = mobilizonMarkers.getLayers().find(m => m.getLatLng().equals(L.latLng(latitude, longitude)));
-                    if (markerToFind) {
-                        mobilizonMarkers.zoomToShowLayer(markerToFind, () => markerToFind.openPopup());
-                    }
-                });
                 eventListContainer.appendChild(listItem);
             });
         };
@@ -290,7 +300,8 @@
         // Function to fetch and display events
         const fetchAndDisplayEvents = async () => {
             mobilizonMarkers.clearLayers();
-            mobilizonEventData = [];
+            mappableMobilizonEvents = [];
+            allUpcomingMobilizonEvents = [];
             showMessage('Lastar hendingar...', true);
 
             try {
@@ -310,21 +321,28 @@
                 
                 let rawEvents = result.data.group?.organizedEvents?.elements || [];
                 const now = new Date();
-                const events = rawEvents.filter(event => event.endsOn && new Date(event.endsOn) >= now);
+                const upcomingEvents = rawEvents.filter(event => event.endsOn && new Date(event.endsOn) >= now);
+                allUpcomingMobilizonEvents = upcomingEvents;
 
-                if (events.length === 0) {
+                // DEBUGGING LOGS - Can be removed later
+                console.log('DEBUG: Alle komande hendingar frå API (før filtrering på stad):', upcomingEvents);
+                
+                if (upcomingEvents.length === 0) {
                     showMessage('Fann ingen komande offentlege hendingar for dette søket.');
-                    populateMobilizonList([]);
+                    populateMobilizonList([], []);
                     return;
                 }
 
+                const eventsToGeocode = [];
+
                 // Process events for geocoding
-                const geocodePromises = events.map(async (event) => {
+                const geocodePromises = upcomingEvents.map(async (event) => {
                     if (event.physicalAddress?.geom?.includes(';')) {
                         const [longitude, latitude] = event.physicalAddress.geom.split(';').map(Number);
                         return { event, latitude, longitude };
                     }
                     if (event.physicalAddress) {
+                        eventsToGeocode.push(event); // Add to list for debugging
                         const { description, locality, region, country } = event.physicalAddress;
                         const addressQuery = [description, locality, region, country].filter(Boolean).join(', ');
                         if (!addressQuery) return null;
@@ -334,37 +352,38 @@
                             const geoData = await geoResponse.json();
                             if (geoData?.length > 0) {
                                 return { event, latitude: parseFloat(geoData[0].lat), longitude: parseFloat(geoData[0].lon) };
+                            } else {
+                                console.warn(`DEBUG: Fann ikkje koordinatar for: "${addressQuery}"`, event);
                             }
                         } catch (e) { console.error(`Geokoding feila for "${addressQuery}":`, e); }
                     }
                     return null;
                 });
                 
+                console.log('DEBUG: Hendingar som må geokodast (fordi dei manglar "geom"):', eventsToGeocode);
+
                 const allMappableEvents = (await Promise.all(geocodePromises)).filter(Boolean);
-                mobilizonEventData = allMappableEvents;
+                mappableMobilizonEvents = allMappableEvents;
+                
+                console.log('DEBUG: Endeleg liste over hendingar som blir vist på kartet:', allMappableEvents);
 
-                if (allMappableEvents.length === 0) {
-                     showMessage('Fann ingen offentlege hendingar med ein gyldig fysisk plassering.');
-                     populateMobilizonList([]);
-                     return;
-                }
-
-                allMappableEvents.forEach(({ event, latitude, longitude }) => {
-                    const marker = L.marker([latitude, longitude]);
-                     const { description, locality } = event.physicalAddress || {};
-                    const locationText = locality || description || 'Stad ikkje spesifisert';
-                    let formattedDate = event.beginsOn ? new Intl.DateTimeFormat('nb-NO', {weekday: 'long', day: 'numeric', month: 'long', hour: 'numeric', minute: 'numeric', timeZone: 'Europe/Oslo'}).format(new Date(event.beginsOn)) : '';
-                    const popupContent = `<h3 class="font-bold text-lg mb-1"><a href="${event.url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800">${event.title}</a></h3><p class="text-gray-700">${locationText}</p>${formattedDate ? `<p class="text-gray-600 font-medium">${formattedDate}</p>` : ''}`;
-                    marker.bindPopup(popupContent);
-                    mobilizonMarkers.addLayer(marker);
-                });
-
-                populateMobilizonList(mobilizonEventData);
-                map.addLayer(mobilizonMarkers);
-                if (mobilizonEventData.length > 0) {
-                    map.fitBounds(mobilizonMarkers.getBounds(), { padding: [50, 50] });
+                if (allMappableEvents.length > 0) {
+                    allMappableEvents.forEach(({ event, latitude, longitude }) => {
+                        const marker = L.marker([latitude, longitude]);
+                         const { description, locality } = event.physicalAddress || {};
+                        const locationText = locality || description || 'Stad ikkje spesifisert';
+                        let formattedDate = event.beginsOn ? new Intl.DateTimeFormat('nb-NO', {weekday: 'long', day: 'numeric', month: 'long', hour: 'numeric', minute: 'numeric', timeZone: 'Europe/Oslo'}).format(new Date(event.beginsOn)) : '';
+                        const popupContent = `<h3 class="font-bold text-lg mb-1"><a href="${event.url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800">${event.title}</a></h3><p class="text-gray-700">${locationText}</p>${formattedDate ? `<p class="text-gray-600 font-medium">${formattedDate}</p>` : ''}`;
+                        marker.bindPopup(popupContent);
+                        mobilizonMarkers.addLayer(marker);
+                    });
+                     map.addLayer(mobilizonMarkers);
+                     if (mobilizonMarkers.getLayers().length > 0) {
+                        map.fitBounds(mobilizonMarkers.getBounds(), { padding: [50, 50] });
+                     }
                 }
                 
+                populateMobilizonList(allUpcomingMobilizonEvents, mappableMobilizonEvents);
                 hideOverlay();
 
             } catch (error) {
@@ -384,11 +403,11 @@
                 }
                 map.addLayer(mobilizonMarkers);
                 listTitle.textContent = "Hendingar";
-                populateMobilizonList(mobilizonEventData);
+                populateMobilizonList(allUpcomingMobilizonEvents, mappableMobilizonEvents);
                 toggleBtn.textContent = "Det store garasjesalget 2025";
                 toggleBtn.classList.replace('bg-blue-600', 'bg-green-600');
                 toggleBtn.classList.replace('hover:bg-blue-700', 'hover:bg-green-700');
-                 if (mobilizonEventData.length > 0) {
+                 if (mappableMobilizonEvents.length > 0) {
                     map.fitBounds(mobilizonMarkers.getBounds(), { padding: [50, 50] });
                 }
             } else {
@@ -408,7 +427,6 @@
             }
         });
 
-
         // Initial load
         window.addEventListener('load', () => {
             fetchAndDisplayEvents();
@@ -417,4 +435,3 @@
     </script>
 </body>
 </html>
-
